@@ -471,7 +471,7 @@ const CONFIG = {
   from: "Baymax",                  // nama pengirim
   passcode: "3010",                // kode pembuka (mis. tanggal+bulan lahir)
   passHint: "Petunjuk: tanggal dan bulan lahirmu, empat angka.",
-  profilePhoto: "",                // URL atau nama file untuk foto bulat di pembuka, mis. "foto 1.jpeg"
+  profilePhoto: "foto 0.jpeg",                // URL atau nama file untuk foto bulat di pembuka, mis. "foto 1.jpeg"
   music: "musik 1.mp3",            // nama file lagu di folder yang sama. Kosong = musik piano bawaan
   welcome: "Hari ini milikmu. Aku menyiapkan empat permainan kecil sebelum kamu sampai ke hadiahnya. Selesaikan satu per satu, ya.",
   heartTarget: 12,
@@ -720,6 +720,13 @@ function stopMusic(){
 function resumeSongIfNeeded(){ if(song && musicOn && song.paused){ const p=song.play(); if(p&&p.catch) p.catch(()=>{}); } }
 function updMusicBtn(){ const b=$('#music'); b.classList.toggle('on',musicOn); b.setAttribute('aria-pressed',musicOn); b.setAttribute('aria-label',musicOn?'Hentikan musik':'Putar musik'); }
 $('#music').addEventListener('click',()=>{ if(musicOn){ musicWanted=false; stopMusic(); } else { musicWanted=true; startMusic(); } });
+/* musik otomatis mulai di sentuhan pertama mana pun di layar */
+function firstTouch(e){
+  if(e.target.closest && e.target.closest('#music')) return;
+  ['touchend','click','keydown'].forEach(ev=>document.removeEventListener(ev, firstTouch, true));
+  ensureAudio(); if(musicWanted) startMusic();
+}
+['touchend','click','keydown'].forEach(ev=>document.addEventListener(ev, firstTouch, true));
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ if(ac && ac.state!=='running') ac.resume(); resumeSongIfNeeded(); } });
 
 /* ---------- navigation ---------- */
@@ -747,7 +754,7 @@ KEYS.forEach(k=>{ const b=document.createElement('button'); b.className='key'+(k
   b.textContent = k==='del' ? 'Hapus' : (k==='ok' ? '✓' : k); b.setAttribute('aria-label', k==='del'?'Hapus angka':(k==='ok'?'Buka':k)); $('#keypad').appendChild(b); });
 function renderDots(){ [...dots.children].forEach((d,i)=>d.classList.toggle('on', i<code.length)); }
 function press(k){
-  ensureAudio(); unlockSong(); if(dots.classList.contains('ok')) return;
+  ensureAudio(); if(musicWanted) startMusic(); if(dots.classList.contains('ok')) return;
   if(k==='del'){ code=code.slice(0,-1); sfx('tap'); }
   else if(k==='ok'){ check(); return; }
   else if(code.length<LEN){ code+=k; sfx('tap'); }
