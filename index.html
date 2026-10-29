@@ -176,6 +176,7 @@ h1{font-size:30px} h2{font-size:26px}
 .flame::after{content:"";position:absolute;left:50%;bottom:-6px;width:56px;height:56px;margin-left:-28px;border-radius:50%;background:radial-gradient(circle,rgba(255,200,110,.35),transparent 65%);animation:breathe 2.2s infinite}
 .flame.out::before,.flame.out::after{opacity:0;transform:scale(.2);transition:all .35s}
 .flame.out{pointer-events:none}
+.flame.wobble::before{animation:flick .25s infinite ease-in-out}
 @keyframes flick{0%,100%{transform:rotate(-2deg) scaleY(1)}25%{transform:rotate(3deg) scaleY(1.08)}50%{transform:rotate(-1deg) scaleY(.94)}75%{transform:rotate(2deg) scaleY(1.05)}}
 @keyframes breathe{50%{opacity:.6;transform:scale(1.15)}}
 .smoke{position:absolute;left:50%;bottom:56px;width:10px;height:10px;border-radius:50%;background:rgba(160,150,160,.55);pointer-events:none;animation:smoke 1.6s ease-out forwards}
@@ -187,6 +188,8 @@ h1{font-size:30px} h2{font-size:26px}
 .tier.t1{width:220px;height:96px;margin-top:-2px;background:linear-gradient(#EFB3C6,#D98AA4)}
 .tier .pearls{position:absolute;left:12px;right:12px;bottom:12px;height:8px;background:radial-gradient(circle,#FFF2D8 3px,transparent 3.5px) 0 0/16px 8px repeat-x}
 .plate{width:250px;height:14px;margin:-2px auto 0;border-radius:50%;background:linear-gradient(var(--gold-soft),var(--gold));opacity:.9}
+.micmeter{height:6px;max-width:200px;margin:12px auto 0;border-radius:99px;background:var(--line);overflow:hidden}
+.micmeter b{display:block;height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,var(--rose),var(--gold));transition:width .08s linear}
 .wish{display:none;margin-top:14px}
 .wish.show{display:block;animation:fadeup .6s}
 .wish textarea{width:100%;min-height:84px;border-radius:18px;border:1px solid var(--line);background:color-mix(in srgb,var(--surface-solid) 80%,transparent);padding:12px 14px;
@@ -373,6 +376,7 @@ h1{font-size:30px} h2{font-size:26px}
         </div>
       </div>
       <div class="btn-row" id="micRow" style="margin-top:12px"><button class="btn ghost" id="micBtn">Tiup pakai mikrofon</button></div>
+      <div class="micmeter" id="micMeter" hidden aria-hidden="true"><b id="micLevel"></b></div>
       <p class="hint" id="micMsg" role="status" aria-live="polite" style="margin-top:8px"></p>
       <div class="wish" id="wish">
         <h2 style="font-size:22px">Sekarang, buat permohonan</h2>
@@ -463,12 +467,12 @@ h1{font-size:30px} h2{font-size:26px}
    UBAH ISI KEJUTAN DI SINI
    ========================================================= */
 const CONFIG = {
-  name: "Oktaviani Aisyah Putri",                 // nama yang berulang tahun
-  from: "Baymax",                   // nama pengirim
+  name: "Oktaviani Aisyah Putri",  // nama yang berulang tahun
+  from: "Baymax",                  // nama pengirim
   passcode: "3010",                // kode pembuka (mis. tanggal+bulan lahir)
   passHint: "Petunjuk: tanggal dan bulan lahirmu, empat angka.",
-  profilePhoto: "",                // URL atau data:image… untuk foto bulat di pembuka
-  music: "",                       // opsional: nama file lagu sendiri, mis. "lagu.mp3". Kosong = musik piano bawaan
+  profilePhoto: "",                // URL atau nama file untuk foto bulat di pembuka, mis. "foto 1.jpeg"
+  music: "musik 1.mp3",            // nama file lagu di folder yang sama. Kosong = musik piano bawaan
   welcome: "Hari ini milikmu. Aku menyiapkan empat permainan kecil sebelum kamu sampai ke hadiahnya. Selesaikan satu per satu, ya.",
   heartTarget: 12,
   sweetWords: ["Cantik", "Lucu banget", "Sayang kamu", "Senyum terus", "Kesayanganku", "Manis", "Bintangku", "Hebat"],
@@ -508,6 +512,7 @@ const CONFIG = {
 const $ = s => document.querySelector(s);
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const rand = (a,b) => a + Math.random()*(b-a);
+const fileUrl = s => encodeURI(s);
 const HEART = '<svg viewBox="0 0 32 29" fill="currentColor"><path d="M16 28.5S1 19.3 1 9.2C1 4.6 4.6 1 9 1c3 0 5.6 1.7 7 4.2C17.4 2.7 20 1 23 1c4.4 0 8 3.6 8 8.2C31 19.3 16 28.5 16 28.5z"/></svg>';
 const PALETTE = ['#E58AA8','#E6C27A','#C4587A','#F7D6E0','#B5873A','#A88BD8','#FFFFFF'];
 
@@ -616,7 +621,7 @@ function ensureAudio(){
     musicBus=ac.createGain(); musicBus.gain.value=0; const lp=ac.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=4200;
     musicBus.connect(lp); lp.connect(master); const m2=ac.createGain(); m2.gain.value=.6; lp.connect(m2); m2.connect(verb);
   }catch(e){ ac=null; } }
-  if(ac && ac.state==='suspended') ac.resume();
+  if(ac && ac.state!=='running') ac.resume();
   return !!ac;
 }
 const mtof=m=>440*Math.pow(2,(m-69)/12);
@@ -649,7 +654,7 @@ function sfx(n){
   else if(n==='win'){ [523,659,784,1047,1319,1568].forEach((f,i)=>tone(f,t+i*.1,1.1,.06)); }
   else if(n==='boom'){ tone(90,t,.7,.11); tone(2000+Math.random()*700,t+.02,.6,.018); }
 }
-/* lagu piano romantis (komposisi orisinal, waltz 3/4) */
+/* lagu piano romantis (komposisi orisinal, waltz 3/4) — dipakai kalau CONFIG.music kosong */
 const BEAT=60/66, BAR=BEAT*3;
 const CHORDS=[[48,[64,67,71]],[45,[60,64,67]],[41,[57,60,64]],[43,[59,62,67]],[40,[55,59,62]],[45,[60,64,67]],[38,[57,60,65]],[43,[59,62,65]]];
 const MEL=[[[76,0,1.5],[74,1.5,.5],[76,2,1]],[[72,0,2],[71,2,.5],[72,2.5,.5]],[[69,0,1],[72,1,1],[77,2,1]],[[76,0,2],[74,2,1]],
@@ -673,11 +678,35 @@ function schedule(){
     if(t>=ac.currentTime-.05) playEv(e,t);
     mIdx++; if(mIdx>=EV.length){ mIdx=0; mLoop++; mStart+=LOOPB*BEAT; } }
 }
-function fadeSong(to,done){ clearInterval(fadeT); fadeT=setInterval(()=>{ const v=song.volume; if(Math.abs(to-v)<=.05){ song.volume=to; clearInterval(fadeT); if(done) done(); } else song.volume=Math.max(0,Math.min(1,v+Math.sign(to-v)*.05)); },70); }
+/* lagu dari file: dibuat & "dibuka izinnya" saat angka pertama diketuk (penting untuk iPhone) */
+function makeSong(){
+  if(song || !CONFIG.music) return;
+  song=new Audio(fileUrl(CONFIG.music)); song.loop=true; song.preload='auto'; song.setAttribute('playsinline','');
+}
+function unlockSong(){
+  if(!CONFIG.music || song) return;
+  makeSong(); song.muted=true;
+  const p=song.play();
+  const done=()=>{ if(!musicOn){ song.pause(); try{ song.currentTime=0; }catch(e){} } song.muted=false; };
+  if(p && p.then) p.then(done).catch(()=>{ song.muted=false; }); else done();
+}
+/* volume tidak bisa diubah di iPhone, jadi fade dibatasi supaya tetap selesai */
+function fadeSong(to,done){
+  clearInterval(fadeT); let n=0;
+  fadeT=setInterval(()=>{ n++; const v=song.volume;
+    if(Math.abs(to-v)<=.05 || n>25){ try{ song.volume=to; }catch(e){} clearInterval(fadeT); if(done) done(); }
+    else { try{ song.volume=Math.max(0,Math.min(1,v+Math.sign(to-v)*.05)); }catch(e){} }
+  },70);
+}
 function startMusic(){
   if(musicOn) return;
-  if(CONFIG.music){ if(!song){ song=new Audio(CONFIG.music); song.loop=true; song.volume=0; }
-    const p=song.play(); if(p&&p.catch) p.catch(()=>{}); musicOn=true; fadeSong(.8); updMusicBtn(); return; }
+  if(CONFIG.music){
+    makeSong(); song.muted=false; try{ song.volume=0; }catch(e){}
+    musicOn=true; updMusicBtn();
+    const p=song.play();
+    if(p && p.catch) p.catch(()=>{ musicOn=false; updMusicBtn(); });
+    fadeSong(.85); return;
+  }
   if(!ensureAudio()) return; musicOn=true; mLoop=0; mIdx=0; mStart=ac.currentTime+.15;
   const t=ac.currentTime; musicBus.gain.cancelScheduledValues(t); musicBus.gain.setValueAtTime(musicBus.gain.value,t); musicBus.gain.linearRampToValueAtTime(1,t+2.5);
   clearInterval(mTimer); mTimer=setInterval(schedule,100); schedule(); updMusicBtn();
@@ -688,8 +717,10 @@ function stopMusic(){
   if(!ac) return; const t=ac.currentTime; musicBus.gain.cancelScheduledValues(t); musicBus.gain.setValueAtTime(musicBus.gain.value,t); musicBus.gain.linearRampToValueAtTime(0,t+.8);
   clearInterval(mTimer);
 }
+function resumeSongIfNeeded(){ if(song && musicOn && song.paused){ const p=song.play(); if(p&&p.catch) p.catch(()=>{}); } }
 function updMusicBtn(){ const b=$('#music'); b.classList.toggle('on',musicOn); b.setAttribute('aria-pressed',musicOn); b.setAttribute('aria-label',musicOn?'Hentikan musik':'Putar musik'); }
 $('#music').addEventListener('click',()=>{ if(musicOn){ musicWanted=false; stopMusic(); } else { musicWanted=true; startMusic(); } });
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ if(ac && ac.state!=='running') ac.resume(); resumeSongIfNeeded(); } });
 
 /* ---------- navigation ---------- */
 const ORDER=['lock','welcome','l1','l2','l3','l4','gallery','letter','gift'];
@@ -716,7 +747,7 @@ KEYS.forEach(k=>{ const b=document.createElement('button'); b.className='key'+(k
   b.textContent = k==='del' ? 'Hapus' : (k==='ok' ? '✓' : k); b.setAttribute('aria-label', k==='del'?'Hapus angka':(k==='ok'?'Buka':k)); $('#keypad').appendChild(b); });
 function renderDots(){ [...dots.children].forEach((d,i)=>d.classList.toggle('on', i<code.length)); }
 function press(k){
-  ensureAudio(); if(dots.classList.contains('ok')) return;
+  ensureAudio(); unlockSong(); if(dots.classList.contains('ok')) return;
   if(k==='del'){ code=code.slice(0,-1); sfx('tap'); }
   else if(k==='ok'){ check(); return; }
   else if(code.length<LEN){ code+=k; sfx('tap'); }
@@ -740,7 +771,7 @@ renderDots();
 /* ---------- welcome ---------- */
 $('#wName').textContent = CONFIG.name;
 $('#wText').textContent = CONFIG.welcome;
-$('#portrait').innerHTML = CONFIG.profilePhoto ? `<img alt="Foto ${CONFIG.name}" src="${CONFIG.profilePhoto}">` : `<span class="mono">${CONFIG.name.charAt(0)}</span>`;
+$('#portrait').innerHTML = CONFIG.profilePhoto ? `<img alt="Foto ${CONFIG.name}" src="${CONFIG.profilePhoto.startsWith('data:')?CONFIG.profilePhoto:fileUrl(CONFIG.profilePhoto)}">` : `<span class="mono">${CONFIG.name.charAt(0)}</span>`;
 
 /* ---------- level 1: catch hearts ---------- */
 const arena=$('#arena'); let L1={};
@@ -842,12 +873,12 @@ INIT.l4=()=>{
   for(let i=0;i<n;i++){ const c=document.createElement('div'); c.className='candle'; c.style.height=(48+((i%2)*8))+'px';
     c.innerHTML='<span class="wick"></span><button class="flame" aria-label="Tiup lilin '+(i+1)+'"></button>';
     c.querySelector('.flame').onclick=e=>blow(e.currentTarget); box.appendChild(c); }
-  $('#wish').classList.remove('show'); $('#micRow').hidden=false; $('#micMsg').textContent=''; $('#l4sub').textContent='Ketuk setiap api, atau tiup ke mikrofon.';
+  $('#wish').classList.remove('show'); $('#micRow').hidden=false; $('#micMeter').hidden=true; $('#micMsg').textContent=''; $('#l4sub').textContent='Ketuk setiap api, atau tiup ke mikrofon.';
   try{ $('#wishText').value = localStorage.getItem('bday-wish')||''; }catch(e){}
 };
 LEAVE.l4=()=>{ stopMic(); try{ localStorage.setItem('bday-wish',$('#wishText').value); }catch(e){} };
 function blow(fl){
-  if(fl.classList.contains('out')) return; fl.classList.add('out'); sfx('puff');
+  if(fl.classList.contains('out')) return; fl.classList.remove('wobble'); fl.classList.add('out'); sfx('puff');
   const s=document.createElement('span'); s.className='smoke'; fl.parentElement.appendChild(s); setTimeout(()=>s.remove(),1700);
   C.left--; if(C.left===0) candlesDone();
 }
@@ -856,22 +887,71 @@ function candlesDone(){
   const r=$('#candles').getBoundingClientRect(); confetti(r.left+r.width/2, r.top, 120, 1.2);
   setTimeout(()=>{ $('#wish').classList.add('show'); $('#wish').scrollIntoView({behavior:reduce?'auto':'smooth',block:'nearest'}); }, 900);
 }
+/* Deteksi tiupan:
+   - filter bawaan HP (noise suppression, auto gain) dimatikan supaya suara tiupan tidak dibuang
+   - ambang menyesuaikan kebisingan ruangan secara otomatis
+   - tiupan terdeteksi dari volume total ATAU dentuman frekuensi rendah khas angin di mikrofon
+   - tiup terus = lilin padam satu per satu */
 async function startMic(){
-  ensureAudio(); if(!ac){ $('#micMsg').textContent='Audio tidak tersedia di browser ini. Ketuk apinya saja.'; return; }
+  ensureAudio();
+  if(!ac){ $('#micMsg').textContent='Audio tidak tersedia di browser ini. Ketuk apinya saja.'; return; }
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    $('#micMsg').textContent='Mikrofon hanya bisa dipakai kalau halaman dibuka lewat https. Ketuk apinya saja.'; return; }
+  $('#micBtn').textContent='Meminta izin mikrofon…';
   try{
-    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-    const src=ac.createMediaStreamSource(stream), an=ac.createAnalyser(); an.fftSize=1024; src.connect(an);
-    const buf=new Uint8Array(an.fftSize); mic={stream,an,run:true,hold:0};
-    $('#micBtn').textContent='Mikrofon aktif, tiup sekarang'; $('#micMsg').textContent='Tiup pelan ke arah mikrofon.';
-    const loop=()=>{ if(!mic||!mic.run) return; an.getByteTimeDomainData(buf); let s=0; for(const v of buf){ const d=(v-128)/128; s+=d*d; }
-      const rms=Math.sqrt(s/buf.length);
-      if(rms>.16){ mic.hold++; if(mic.hold>5){ mic.hold=0; const f=[...document.querySelectorAll('.flame:not(.out)')]; if(f.length) blow(f[Math.floor(Math.random()*f.length)]); } } else mic.hold=Math.max(0,mic.hold-1);
-      requestAnimationFrame(loop); };
-    loop();
-  }catch(e){ $('#micMsg').textContent='Mikrofon tidak bisa dipakai di sini. Ketuk apinya saja.'; }
+    let stream;
+    try{
+      stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    }catch(err){
+      if(err && (err.name==='NotAllowedError'||err.name==='SecurityError')) throw err;
+      stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    }
+    if(ac.state!=='running'){ try{ await ac.resume(); }catch(e){} }
+    const src=ac.createMediaStreamSource(stream), an=ac.createAnalyser();
+    an.fftSize=1024; an.smoothingTimeConstant=.15; src.connect(an);
+    const td=new Float32Array(an.fftSize), fd=new Uint8Array(an.frequencyBinCount);
+    const binHz=ac.sampleRate/an.fftSize, lowEnd=Math.max(3,Math.round(400/binHz));
+    mic={stream,src,an,run:true,hold:0,cool:.4,base:.004,lowBase:40,last:0};
+    $('#micBtn').textContent='Matikan mikrofon'; $('#micMeter').hidden=false;
+    $('#micMsg').textContent='Mikrofon aktif. Tiup ke arah lubang mikrofon HP.';
+    resumeSongIfNeeded();
+    const loop=t=>{
+      if(!mic||!mic.run) return;
+      const dt=mic.last?Math.min(.1,(t-mic.last)/1000):.016; mic.last=t;
+      an.getFloatTimeDomainData(td); let s=0; for(let i=0;i<td.length;i++) s+=td[i]*td[i];
+      const rms=Math.sqrt(s/td.length);
+      an.getByteFrequencyData(fd); let lo=0; for(let i=1;i<=lowEnd;i++) lo+=fd[i]; lo/=lowEnd;
+      const thr=Math.max(.03, mic.base*3), lowThr=Math.min(235, Math.max(150, mic.lowBase+50));
+      const blowing = rms>thr || lo>lowThr;
+      $('#micLevel').style.width=Math.min(100, Math.max(rms/thr, lo/lowThr)*70)+'%';
+      if(blowing){ mic.hold+=dt; }
+      else { mic.hold=Math.max(0,mic.hold-dt*2); mic.base=Math.max(.002,mic.base*.96+rms*.04); mic.lowBase=mic.lowBase*.96+lo*.04; }
+      const lit=[...document.querySelectorAll('.flame:not(.out)')];
+      lit.forEach(f=>f.classList.toggle('wobble', blowing));
+      mic.cool-=dt;
+      if(mic.hold>.08 && mic.cool<=0 && lit.length){ blow(lit[0]); mic.cool=.3; }
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  }catch(e){
+    $('#micBtn').textContent='Tiup pakai mikrofon';
+    const n=e && e.name;
+    $('#micMsg').textContent =
+      n==='NotAllowedError'||n==='SecurityError' ? 'Izin mikrofon ditolak. Izinkan mikrofon untuk situs ini di pengaturan browser, lalu coba lagi. Atau ketuk apinya saja.' :
+      n==='NotFoundError' ? 'Mikrofon tidak ditemukan. Ketuk apinya saja.' :
+      n==='NotReadableError' ? 'Mikrofon sedang dipakai aplikasi lain. Tutup aplikasinya, lalu coba lagi.' :
+      'Mikrofon tidak bisa dipakai di sini. Ketuk apinya saja.';
+  }
 }
-function stopMic(){ if(mic){ mic.run=false; mic.stream.getTracks().forEach(t=>t.stop()); mic=null; $('#micBtn').textContent='Tiup pakai mikrofon'; } }
-$('#micBtn').onclick=()=>{ if(mic) stopMic(); else startMic(); };
+function stopMic(){
+  if(!mic) return;
+  mic.run=false; try{ mic.src.disconnect(); }catch(e){} mic.stream.getTracks().forEach(t=>t.stop()); mic=null;
+  document.querySelectorAll('.flame').forEach(f=>f.classList.remove('wobble'));
+  $('#micBtn').textContent='Tiup pakai mikrofon'; $('#micMeter').hidden=true; $('#micLevel').style.width='0';
+  if(ac && ac.state!=='running') ac.resume();
+  setTimeout(resumeSongIfNeeded, 300);
+}
+$('#micBtn').onclick=()=>{ if(mic){ stopMic(); $('#micMsg').textContent=''; } else startMic(); };
 
 /* ---------- gallery ---------- */
 const stack=$('#stack'); let G={order:[]};
@@ -879,7 +959,7 @@ const HUES=[['#F6D0DC','#E9B6C9'],['#F3E1C2','#E4C690'],['#E3D4F2','#C9B4E6'],['
 INIT.gallery=()=>{ if(G.built) return; G.built=true;
   CONFIG.photos.forEach((p,i)=>{ const d=document.createElement('div'); d.className='polaroid'; d.dataset.i=i;
     const hue=HUES[i%HUES.length];
-    d.innerHTML = `<div class="pic" style="background:linear-gradient(150deg,${hue[0]},${hue[1]})">${p.src?`<img alt="${p.caption}" src="${p.src}" draggable="false">`:`<span aria-hidden="true">${p.emoji||'📷'}</span>`}</div><p>${p.caption}</p>`;
+    d.innerHTML = `<div class="pic" style="background:linear-gradient(150deg,${hue[0]},${hue[1]})">${p.src?`<img alt="${p.caption}" src="${fileUrl(p.src)}" draggable="false">`:`<span aria-hidden="true">${p.emoji||'📷'}</span>`}</div><p>${p.caption}</p>`;
     d.dataset.rot=rand(-7,7).toFixed(1); stack.appendChild(d); G.order.unshift(d); });
   layout(); };
 function layout(){
